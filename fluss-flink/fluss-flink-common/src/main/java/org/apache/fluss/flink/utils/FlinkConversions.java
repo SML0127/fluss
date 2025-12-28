@@ -21,6 +21,7 @@ import org.apache.fluss.annotation.VisibleForTesting;
 import org.apache.fluss.config.ConfigOption;
 import org.apache.fluss.config.MemorySize;
 import org.apache.fluss.config.Password;
+import org.apache.fluss.flink.adapter.CatalogTableAdapter;
 import org.apache.fluss.flink.catalog.FlinkCatalogFactory;
 import org.apache.fluss.metadata.DatabaseDescriptor;
 import org.apache.fluss.metadata.Schema;
@@ -209,14 +210,23 @@ public class FlinkConversions {
                         .collect(Collectors.toList()));
 
         // convert some flink options to fluss table configs.
-        Map<String, String> properties = convertFlinkOptionsToFlussTableProperties(flinkTableConf);
+        Map<String, String> storageProperties =
+                convertFlinkOptionsToFlussTableProperties(flinkTableConf);
 
-        if (properties.containsKey(TABLE_AUTO_INCREMENT_FIELDS.key())) {
+        if (storageProperties.containsKey(TABLE_AUTO_INCREMENT_FIELDS.key())) {
             for (String autoIncrementColumn :
-                    properties.get(TABLE_AUTO_INCREMENT_FIELDS.key()).split(",")) {
+                    storageProperties.get(TABLE_AUTO_INCREMENT_FIELDS.key()).split(",")) {
                 schemBuilder.enableAutoIncrement(autoIncrementColumn);
             }
         }
+
+        // serialize computed column and watermark spec to custom properties
+        Map<String, String> customProperties =
+                extractCustomProperties(flinkTableConf, storageProperties);
+        CatalogPropertiesUtils.serializeComputedColumns(
+                customProperties, resolvedSchema.getColumns());
+        CatalogPropertiesUtils.serializeWatermarkSpecs(
+                customProperties, catalogBaseTable.getResolvedSchema().getWatermarkSpecs());
 
         Schema schema = schemBuilder.build();
 
@@ -235,14 +245,8 @@ public class FlinkConversions {
                         ? ((ResolvedCatalogTable) catalogBaseTable).getPartitionKeys()
                         : ((ResolvedCatalogMaterializedTable) catalogBaseTable).getPartitionKeys();
 
-        Map<String, String> customProperties = flinkTableConf.toMap();
-        CatalogPropertiesUtils.serializeComputedColumns(
-                customProperties, resolvedSchema.getColumns());
-        CatalogPropertiesUtils.serializeWatermarkSpecs(
-                customProperties, catalogBaseTable.getResolvedSchema().getWatermarkSpecs());
-
         // Set materialized table flags to fluss table custom properties
-        if (CatalogBaseTable.TableKind.MATERIALIZED_TABLE == tableKind) {
+        if (CatalogTableAdapter.isMaterializedTable(tableKind)) {
             CatalogMaterializedTable.RefreshMode refreshMode =
                     ((ResolvedCatalogMaterializedTable) catalogBaseTable).getRefreshMode();
             if (refreshMode == CatalogMaterializedTable.RefreshMode.FULL) {
@@ -282,7 +286,7 @@ public class FlinkConversions {
                 .partitionedBy(partitionKeys)
                 .distributedBy(bucketNum, bucketKey)
                 .comment(comment)
-                .properties(properties)
+                .properties(storageProperties)
                 .customProperties(customProperties)
                 .build();
     }
@@ -642,5 +646,12 @@ public class FlinkConversions {
                 .refreshHandlerDescription(refreshHandlerDesc)
                 .serializedRefreshHandler(refreshHandlerBytes);
         return builder.build();
+    }
+
+    private static Map<String, String> extractCustomProperties(
+            Configuration allProperties, Map<String, String> flussTableProperties) {
+        Map<String, String> customProperties = new HashMap<>(allProperties.toMap());
+        customProperties.keySet().removeAll(flussTableProperties.keySet());
+        return customProperties;
     }
 }

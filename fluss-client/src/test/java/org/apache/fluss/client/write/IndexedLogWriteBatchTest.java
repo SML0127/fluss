@@ -74,11 +74,10 @@ public class IndexedLogWriteBatchTest {
                         writeLimit,
                         MemorySegment.allocateHeapMemory(writeLimit));
 
-        for (int i = 0;
-                i
-                        < (writeLimit - recordBatchHeaderSize(CURRENT_LOG_MAGIC_VALUE))
-                                / estimatedSizeInBytes;
-                i++) {
+        int maxRecordsPerBatch =
+                (writeLimit - recordBatchHeaderSize(CURRENT_LOG_MAGIC_VALUE))
+                        / estimatedSizeInBytes;
+        for (int i = 0; i < maxRecordsPerBatch; i++) {
             boolean appendResult =
                     logProducerBatch.tryAppend(createWriteRecord(), newWriteCallback());
             assertThat(appendResult).isTrue();
