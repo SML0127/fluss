@@ -25,7 +25,6 @@ import org.apache.fluss.row.InternalRow;
 import org.apache.fluss.row.TimestampLtz;
 import org.apache.fluss.row.TimestampNtz;
 import org.apache.fluss.utils.BytesUtils;
-
 import org.apache.iceberg.data.Record;
 
 import java.math.BigDecimal;
@@ -41,6 +40,10 @@ public class IcebergRecordAsFlussRow implements InternalRow {
     private Record icebergRecord;
 
     public IcebergRecordAsFlussRow() {}
+
+    public IcebergRecordAsFlussRow(Record icebergRecord) {
+        this.icebergRecord = icebergRecord;
+    }
 
     public IcebergRecordAsFlussRow replaceIcebergRecord(Record icebergRecord) {
         this.icebergRecord = icebergRecord;
@@ -157,6 +160,18 @@ public class IcebergRecordAsFlussRow implements InternalRow {
 
     @Override
     public InternalRow getRow(int pos, int numFields) {
-        throw new UnsupportedOperationException();
+        Object value = icebergRecord.get(pos);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Record) {
+            return new IcebergRecordAsFlussRow((Record) value);
+        } else {
+            throw new IllegalArgumentException(
+                    "Expected Iceberg Record for nested row at position "
+                            + pos
+                            + " but found: "
+                            + value.getClass().getName());
+        }
     }
 }
