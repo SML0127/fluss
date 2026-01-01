@@ -25,6 +25,7 @@ import org.apache.fluss.row.InternalRow;
 import org.apache.fluss.row.TimestampLtz;
 import org.apache.fluss.row.TimestampNtz;
 import org.apache.fluss.utils.BytesUtils;
+
 import org.apache.iceberg.data.Record;
 
 import java.math.BigDecimal;
